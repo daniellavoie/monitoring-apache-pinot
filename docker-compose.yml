@@ -1,0 +1,99 @@
+version: '3'
+services:
+  zookeeper:
+    image: zookeeper:latest
+    hostname: zookeeper
+    restart: unless-stopped
+    ports:
+      - "2181:2181"
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_PORT: 2181
+      ZOO_SERVERS: server.1=zookeeper:2888:3888;2181
+  kafka:
+    image: confluentinc/cp-kafka:5.5.0
+    hostname: kafka
+    restart: unless-stopped
+    depends_on:
+    - zookeeper
+    ports:
+    - 9092:9092
+    - 19092:19092
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: LOCALHOST://localhost:9092,DOCKER://kafka:19092
+      KAFKA_BROKER_ID: 1
+      KAFKA_BROKER_RACK: "r1"
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: DOCKER:PLAINTEXT,LOCALHOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+  pinot-controller:
+    image: apachepinot/pinot:0.6.0-SNAPSHOT-23797914c-20200927-jdk11
+    hostname: pinot-controller
+    restart: unless-stopped
+    ports:
+    - "9000:9000"
+    - "8888"
+    command: StartController -zkAddress zookeeper:2181
+    depends_on:
+    - kafka
+    environment:
+      JAVA_OPTS: -javaagent:/opt/pinot/etc/jmx_prometheus_javaagent/jmx_prometheus_javaagent-0.12.0.jar=8888:/opt/pinot/etc/jmx_prometheus_javaagent/configs/pinot.yml
+  pinot-broker:
+    image: apachepinot/pinot:0.6.0-SNAPSHOT-23797914c-20200927-jdk11
+    hostname: pinot-broker
+    restart: unless-stopped
+    ports:
+    - "8099:8099"
+    - "8888"
+    command: StartBroker -zkAddress zookeeper:2181
+    depends_on:
+      - zookeeper
+      - kafka
+      - pinot-controller
+    environment:
+      JAVA_OPTS: -javaagent:/opt/pinot/etc/jmx_prometheus_javaagent/jmx_prometheus_javaagent-0.12.0.jar=8888:/opt/pinot/etc/jmx_prometheus_javaagent/configs/pinot.yml
+  pinot-server:
+    image: apachepinot/pinot:0.6.0-SNAPSHOT-23797914c-20200927-jdk11
+    restart: unless-stopped
+    hostname: pinot-server
+    ports:
+    - "8098:8098"
+    - "8888"
+    command: StartServer -zkAddress zookeeper:2181 
+    depends_on:
+      - zookeeper
+      - kafka
+      - pinot-controller
+    environment:
+      JAVA_OPTS: -javaagent:/opt/pinot/etc/jmx_prometheus_javaagent/jmx_prometheus_javaagent-0.12.0.jar=8888:/opt/pinot/etc/jmx_prometheus_javaagent/configs/pinot.yml
+    
+  prometheus:
+    image: prom/prometheus
+    container_name: monitoring-prometheus
+    restart: unless-stopped
+    volumes:
+    - monitoring-prometheus-data-1:/prometheus
+    - ./volumes/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+    - "9090:9090"
+  grafana:
+    image: grafana/grafana
+    volumes:
+    - ./volumes/grafana/provisioning:/etc/grafana/provisioning
+    - ./volumes/grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+    - "3000:3000"
+    environment:
+      GF_SERVER_ROOT_URL: https://localhost:3000
+      GF_SECURITY_ADMIN_PASSWORD: password
+
+  smoke-tests:
+    build: smoke-tests/smoke-tests-server
+    restart: unless-stopped
+    environment:
+      SPRING_KAFKA_BOOTSTRAPSERVERS: kafka:19092
+      PINOT_URL: http://pinot-controller:9000
+
+volumes:
+  monitoring-prometheus-data-1:

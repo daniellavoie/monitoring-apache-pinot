@@ -1,0 +1,5 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  com.github.daniellavoie.pinot.smoketests.core.RealtimeServiceImpl,\
+  com.github.daniellavoie.pinot.smoketests.core.kafka.FlightsRealtimeTopic,\
+  com.github.daniellavoie.pinot.smoketests.core.config.PinotConfiguration,\
+  com.github.daniellavoie.pinot.smoketests.core.config.TestDataConfiguration
